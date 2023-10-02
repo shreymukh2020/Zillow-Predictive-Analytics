@@ -1,0 +1,1087 @@
+---
+title: "State_timeseries"
+author: "Shreyashi Mukhopadhyay"
+date: "4/13/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+## Install packages
+
+```{r}
+library(wesanderson)
+library(ggplot2)
+library(ggpubr)
+library(foreign)
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(lubridate)
+library(RColorBrewer)
+library(ggcorrplot)
+library(stringr)
+library(stargazer)
+library(ggfortify)
+library(forecast)
+library(xts)
+library(zoo)
+library(fpp2)
+library(TTR)
+library(geofacet)
+library(plotly)
+library(plyr)
+library(reshape)
+library(gridExtra)
+
+theme_set(theme_classic())
+
+```
+
+
+## Data pre-processing
+
+
+## Read the data
+
+```{r}
+
+state= read.csv('State_time_series.csv')
+
+sprintf("The data set has %d rows and %d columns", nrow(state), ncol(state) )
+
+```
+
+
+
+## Convert the date column into date format
+
+```{r}
+
+state$Date<-as.Date(state$Date)
+
+#state <- separate(state, "Date", c("Year", "Month", "Day"), sep = '-')
+
+```
+
+
+## Creating the column Year from the Date column
+
+```{r}
+
+state['Year'] = year(state$Date)
+
+head(state)
+```
+
+
+## Counting Null Values
+```{r}
+
+print(sum(is.na(state)))
+
+```
+
+
+## Setting the NA values to 0
+
+```{r}
+#state[is.na(state)] <- 0
+
+```
+
+## Dropping NA Null Values
+
+```{r}
+
+#state<-na.omit(state)
+
+```
+
+
+## Recounting the number of Null values
+
+```{r}
+
+#print(sum(is.na(state)))
+
+```
+
+
+## View structure and columns of the data
+
+```{r}
+
+str(state)
+
+names(state)
+
+head(state)
+
+```
+## Sale Price and Count By State from 1996-2017
+
+```{r}
+
+Each_state_s<-ddply(state, 'RegionName', summarise, 
+                    price=mean(Sale_Prices, na.rm=T))
+                    
+
+Each_state_s<-na.omit(melt(Each_state_s))
+
+col<-c(rep("black",2), rep("gray50",45)) #for axis.text.x
+
+ggplot(Each_state_s,aes(x=reorder(RegionName,-value),y=value, group=variable ))+
+  geom_col(aes(fill=variable),position="dodge", width = 0.6)+
+  labs(x="States", y=NULL, title = "Sale Prices for All Homes across States from 1996-2017")+
+  coord_flip()+
+  expand_limits(x=0, y=0)+
+  theme(axis.text.y=element_text(color=col, size = 7, vjust=0),
+        plot.title=element_text(vjust=3, size=15))
+
+```
+
+## Rental Price and Count By State from 1996-2017
+
+```{r}
+
+Each_state_s<-ddply(state, 'RegionName', summarise, 
+                    price=mean(MedianRentalPrice_AllHomes, na.rm=T))
+                    
+
+Each_state_s<-na.omit(melt(Each_state_s))
+
+col<-c(rep("black",2), rep("gray50",45)) #for axis.text.x
+
+ggplot(Each_state_s,aes(x=reorder(RegionName,-value),y=value, group=variable, fill = "lightblue"))+
+  geom_col(position="dodge", width = 0.70)+
+  labs(x="States", y=NULL, title = "Rental Prices All Homes across States from 1996-2017")+
+  coord_flip()+
+  expand_limits(x=0, y=0)+
+  theme(axis.text.y=element_text(color=col, size = 7, vjust=0),
+        plot.title=element_text(vjust=3, size=15))
+  
+
+```
+## Median Listing Price for Single Family Residence Across All States 
+
+```{r}
+
+plot1<-aggregate(MedianListingPrice_SingleFamilyResidence ~Year+RegionName, state, mean) 
+plot1
+
+ggplot(plot1)+
+ geom_bar(mapping = aes(x = RegionName , y = MedianListingPrice_SingleFamilyResidence) , stat = "identity" , fill = 'orange') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("Median Listing Price for Single Family Residence Across States for 1996-2017")
+
+```
+## Median Listing Price for Single Family Residence By Year for 1996-2017
+
+```{r}
+
+plot11<-aggregate(MedianListingPrice_SingleFamilyResidence  ~Year+RegionName, state, mean)
+
+plot11
+
+ggplot(plot11)+
+ geom_bar(mapping = aes(x = Year , y = MedianListingPrice_SingleFamilyResidence ) , stat = "identity" , fill = 'lightblue') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("Median Listing Price for Single Family Residence By Year for 1996-2017")
+
+```
+
+
+### Median Listing Price for Single family residence Chloropleth
+
+```{r}
+
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates <-data.frame( region = tolower(aggregate(MedianListingPrice_SingleFamilyResidence ~ RegionName, state, mean)[,1]), 
+                        Price = aggregate(MedianListingPrice_SingleFamilyResidence ~ RegionName,state,mean)[,2])%>%
+            mutate(Rank = dense_rank(desc(Price)))%>%
+            merge(USA, by = 'region')
+
+map1<-arrange(Allstates, order)%>%
+    ggplot(aes(long, lat, group=group, fill=Price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "Median Listing Price for Single Family Homes in US")+
+    coord_map("polyconic")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("FantasticFox1"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(map1)
+
+```
+
+
+## The Growth of Median Listing Price for sigle family residence in US from 1996-2017
+
+```{r}
+
+Year_state<-aggregate(MedianListingPrice_SingleFamilyResidence ~Year+RegionName, state, mean)
+pal<-rep(brewer.pal(15, "Spectral"),10)
+
+ggplot(Year_state, aes(group = RegionName ))+
+  geom_line(aes(x=Year,y=MedianListingPrice_SingleFamilyResidence,color=RegionName), alpha=0.5, show.legend=F)+
+  scale_color_manual(values=pal)+
+  labs(title="The Growth of Median Listing Price for Single Family Homes in US", x=NULL,
+       subtitle="\t Increase in MedianListingPrice_SingleFamilyResidence from 1996 to 2017")+
+  theme(panel.background=element_rect(fill = "white"),
+          plot.title=element_text(vjust=3, size=15),
+          panel.grid.major=element_line(color = "gray90"))
+
+
+```
+
+
+
+
+## Median Rental Prices for Single Family Home across States for 1996-2017
+
+```{r}
+
+plot2<-aggregate(MedianRentalPrice_SingleFamilyResidence ~Year+RegionName, state, mean)
+plot2
+
+ggplot(plot2)+
+ geom_bar(mapping = aes(x = RegionName , y = MedianRentalPrice_SingleFamilyResidence  ) , stat = "identity" , fill = 'orange') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("Median Rental Price for Single family Home by State for 1996-2017")
+
+
+```
+## Median Rental Price for All Homes across Years for 1996-2017
+
+```{r}
+
+plot12<-aggregate(MedianRentalPrice_SingleFamilyResidence ~Year+RegionName, state, mean)
+plot12
+
+ggplot(plot12)+
+ geom_bar(mapping = aes(x = Year , y = MedianRentalPrice_SingleFamilyResidence  ) , stat = "identity" , fill = 'lightblue') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("Median Rental Price for Single family Home by Year for 1996-2017")
+
+```
+### Median Rental Price for All Homes Chloropleth
+
+```{r}
+
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates <-data.frame( region = tolower(aggregate(MedianRentalPrice_SingleFamilyResidence ~ RegionName, state, mean)[,1]), 
+                        Price = aggregate(MedianRentalPrice_SingleFamilyResidence  ~ RegionName,state,mean)[,2])%>%
+            mutate(Rank = dense_rank(desc(Price)))%>%
+            merge(USA, by = 'region')
+
+map1<-arrange(Allstates, order)%>%
+    ggplot(aes(long, lat, group=group, fill=Price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "Median Rental Price for Single family Home in US")+
+    coord_map("polyconic")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("Zissou1"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(map1)
+
+```
+## The Growth of Median Rental Price for All homes in US from 1996-2017
+
+```{r}
+
+Year_state<-aggregate(MedianRentalPrice_SingleFamilyResidence ~Year+RegionName, state, mean)
+pal<-rep(brewer.pal(15, "Spectral"),10)
+
+ggplot(Year_state, aes(group = RegionName ))+
+  geom_line(aes(x=Year,y=MedianRentalPrice_SingleFamilyResidence,color=RegionName), alpha=0.5, show.legend=F)+
+  scale_color_manual(values=pal)+
+  labs(title="The Growth of Median Rental Price for Single family Home in US", x=NULL,
+       subtitle="\t Increase in Median Rental Price from 1996 to 2017")+
+  theme(panel.background=element_rect(fill = "white"),
+          plot.title=element_text(vjust=3, size=15),
+          panel.grid.major=element_line(color = "gray90"))
+
+
+```
+
+## Median Listing Price for All homes across States for 1996-2017
+
+```{r}
+
+plot3<-aggregate(ZHVI_SingleFamilyResidence ~Year+RegionName, state, mean)
+
+plot3
+
+ggplot(plot3)+
+ geom_bar(mapping = aes(x = RegionName , y = ZHVI_SingleFamilyResidence ) , stat = "identity" , fill = 'orange') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI value for Single Family Homes across States for 1996-2017")
+
+```
+
+##ZHVI values Single Family Homes by Year for 1996-2017
+
+```{r}
+
+plot31<-aggregate(MedianListingPrice_AllHomes ~Year+RegionName, state, mean)
+
+plot31
+
+ggplot(plot31)+
+ geom_bar(mapping = aes(x = Year , y = MedianListingPrice_AllHomes) , stat = "identity" , fill = 'lightblue') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI values for single family Homes by Year for 1996-2017")
+
+
+```
+
+### ZHVI values for Single Family Homes Chloropleth
+
+```{r}
+
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates <-data.frame( region = tolower(aggregate(MedianListingPrice_AllHomes ~ RegionName, state, mean)[,1]), 
+                        Price = aggregate(MedianListingPrice_AllHomes ~ RegionName,state,mean)[,2])%>%
+            mutate(Rank = dense_rank(desc(Price)))%>%
+            merge(USA, by = 'region')
+
+map1<-arrange(Allstates, order)%>%
+    ggplot(aes(long, lat, group=group, fill=Price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "ZHVI values for single family Homes across states in US")+
+    coord_map("polyconic")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("FantasticFox1"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(map1)
+
+```
+## The Growth of Median Listing Price for All homes in US from 1996-2017
+
+```{r}
+
+Year_state<-aggregate(MedianListingPrice_AllHomes ~Year+RegionName, state, mean)
+pal<-rep(brewer.pal(15, "Spectral"),10)
+
+ggplot(Year_state, aes(group = RegionName ))+
+  geom_line(aes(x=Year,y=MedianListingPrice_AllHomes,color=RegionName), alpha=0.5, show.legend=F)+
+  scale_color_manual(values=pal)+
+  labs(title="The Growth of ZHVI values for Single Family Homes across US", x=NULL,
+       subtitle="\t Increase in Median Listing Price from 1996 to 2017")+
+  theme(panel.background=element_rect(fill = "white"),
+          plot.title=element_text(vjust=3, size=15),
+          panel.grid.major=element_line(color = "gray90"))
+
+
+```
+
+## ZHVI for ALL Homes States for 1996-2017
+
+```{r}
+
+plot5<-aggregate(ZHVI_AllHomes ~ Year+RegionName, state, mean)
+plot5
+
+ggplot(plot5)+
+ geom_bar(mapping = aes(x = RegionName , y = ZHVI_AllHomes) , stat = "identity" , fill = 'orange') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI for ALL Homes by State for 1996-2017")
+
+
+```
+
+## ZHVI for ALL Homes by Year for 1996-2017
+
+```{r}
+
+plot31<-aggregate(ZHVI_AllHomes ~Year+RegionName, state, mean)
+
+plot31
+
+ggplot(plot31)+
+ geom_bar(mapping = aes(x = Year , y = ZHVI_AllHomes) , stat = "identity" , fill = 'lightblue') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI for ALL Homes by Year for 1996-2017")
+
+
+```
+
+## The Growth of ZHVI for ALL Homes in US from 1996-2017
+
+```{r}
+
+Year_state<-aggregate(ZHVI_AllHomes ~Year+RegionName, state, mean)
+pal<-rep(brewer.pal(10, "Spectral"),5)
+
+ggplot(Year_state, aes(group = RegionName ))+
+  geom_line(aes(x=Year,y=ZHVI_AllHomes,color=RegionName), alpha=0.5, show.legend=F)+
+  scale_color_manual(values=pal)+
+  labs(title="The Growth in ZHVI for All Homes in US", x=NULL,
+       subtitle="\t Increase in ZHVI_Allhomes from 1996 to 2017")+
+  theme(panel.background=element_rect(fill = "white"),
+          plot.title=element_text(vjust=3, size=15),
+          panel.grid.major=element_line(color = "gray90"))
+
+
+```
+
+## Distribution of Plot Mean ZHVI for all Homes across all States
+
+
+```{r}
+
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates <-data.frame( region = tolower(aggregate(ZHVI_AllHomes ~ RegionName, state, mean)[,1]), 
+                        Price = aggregate(ZHVI_AllHomes ~ RegionName,state,mean)[,2])%>%
+            mutate(Rank = dense_rank(desc(Price)))%>%
+            merge(USA, by = 'region')
+
+map1<-arrange(Allstates, order)%>%
+    ggplot(aes(long, lat, group=group, fill=Price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "Distribution of ZHVI values for all Homes across all States in US")+
+    coord_map("polyconic")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("Zissou1"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(map1)
+
+```
+
+
+
+
+## Mean ZHVI for 1 Bedroom House across all States
+
+
+```{r}
+
+library(ggplot2)
+head(state)
+
+plot111<-aggregate(ZHVI_1bedroom ~Year+RegionName, state, mean) 
+plot111
+
+ggplot(plot111)+
+ geom_bar(mapping = aes(x = RegionName , y =ZHVI_1bedroom) , stat = "identity" , fill = 'pink') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI values for One Bedroom Homes Across States for 1996-2017")
+
+```
+
+## Plot Mean ZHVI for 2 Bedroom House across all States
+
+
+```{r}
+
+plot222<-aggregate(ZHVI_2bedroom ~Year+RegionName, state, mean) 
+plot222
+
+ggplot(plot222)+
+ geom_bar(mapping = aes(x = RegionName , y =ZHVI_2bedroom) , stat = "identity" , fill = 'pink') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI values for Two Bedroom Homes Across States for 1996-2017")
+
+```
+
+
+## Mean ZHVI for 3 Bedroom House across all States
+
+
+```{r}
+
+plot333<-aggregate(ZHVI_3bedroom ~Year+RegionName, state, mean) 
+plot333
+
+ggplot(plot333)+
+ geom_bar(mapping = aes(x = RegionName , y =ZHVI_3bedroom) , stat = "identity" , fill = 'pink') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI values for Three Bedroom Homes Across States for 1996-2017")
+
+
+
+```
+
+## Plot Mean ZHVI for 4 Bedroom House across all States
+
+
+```{r}
+
+plot444<-aggregate(ZHVI_4bedroom ~Year+RegionName, state, mean) 
+plot444
+
+ggplot(plot444)+
+ geom_bar(mapping = aes(x = RegionName , y =ZHVI_4bedroom) , stat = "identity" , fill = 'pink') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI values for Four Bedroom Homes Across States for 1996-2017")
+
+```
+
+
+## Plot Mean ZHVI for 4 Bedroom House across all States
+
+
+```{r}
+
+plot555<-aggregate(ZHVI_5BedroomOrMore ~Year+RegionName, state, mean) 
+plot555
+
+ggplot(plot555)+
+ geom_bar(mapping = aes(x = RegionName , y =ZHVI_5BedroomOrMore) , stat = "identity" , fill = 'pink') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("ZHVI values for Five or more Bedroom Homes Across States for 1996-2017")
+
+
+```
+
+## Sale price for All Homes and All states
+
+
+```{r}
+
+gbp2<-wes_palette("GrandBudapest2")[2]
+
+ggplot(state, aes(x=Sale_Prices))+
+    geom_histogram(fill="pink", alpha=.9, binwidth=10000)+
+    labs(x=NULL, y=NULL, title = "Median Sale Price for All Homes across All states")+
+    scale_x_continuous(breaks= seq(0,600000, by=100000))+
+    theme_minimal() + theme(plot.title=element_text(vjust=3, size=15) )
+
+
+
+```
+## Sale Prices Across states
+
+```{r}
+
+
+ggplot(state, aes(x=Sale_Prices))+
+ geom_bar(mapping = aes(x = RegionName , y =Sale_Prices) , stat = "identity" , fill = 'pink') +
+ theme(axis.text.x = element_text(angle=90))+
+ ggtitle("Sale Prices Across States for 1996-2017")
+
+
+
+```
+
+
+### Sale price for All Homes across All States
+
+```{r}
+
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates <-data.frame( region = tolower(aggregate(Sale_Prices ~ RegionName, state, mean)[,1]), 
+                        Price = aggregate(Sale_Prices ~RegionName,state,mean)[,2])%>%
+            mutate(Rank = dense_rank(desc(Price)))%>%
+            merge(USA, by = 'region')
+
+ap<-arrange(Allstates, order)%>%
+    ggplot(aes(long, lat, group=group, fill=Price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "Distribution of Sale Prices for AllHomes in US")+
+    coord_map("polyconic")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("Moonrise3"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(ap)
+
+```
+
+## Rental Prices for All homes and All States
+
+```{r}
+
+gbp2<-wes_palette("GrandBudapest2")[4]
+
+ggplot(state, aes(x=MedianRentalPrice_AllHomes))+
+    geom_histogram(fill=gbp2, alpha=.9, binwidth=100)+
+    labs(x=NULL, y=NULL, title = "Median Rental Price for All Homes across All States")+
+    scale_x_continuous(breaks= seq(0,4000, by=500))+
+    theme( plot.title=element_text(vjust=3, size=15) ) + theme_minimal()
+
+
+
+
+```
+
+
+
+```{r}
+
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates_r <-data.frame(region = tolower(aggregate(MedianRentalPrice_AllHomes ~ RegionName, state, mean)[,1]))%>%
+              merge(USA, by = 'region')
+meanr <-aggregate(MedianRentalPrice_AllHomes ~ RegionName, state, mean)
+Allstates_r <-merge(Allstates_r, data.frame(price =meanr[,2], region =tolower(meanr[,1])),
+                    all.x=TRUE)%>%
+              mutate(Rank = dense_rank(-price))
+
+ar<-arrange(Allstates_r, order)%>%
+    ggplot(aes(long, lat, group=group, fill=price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "Distribution of the Average Median Rental Price for All Homes in US")+
+    coord_map("FantasticFox1")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("Moonrise3"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(ar)
+
+```
+
+## 
+
+```{r}
+
+gbp1<-wes_palette("GrandBudapest2")[1]
+
+MSP <- aggregate(Sale_Prices ~Year, state, mean)
+
+# MSP <-na.omit(ddply(data, 'Year', summarise, mean(Sale_Prices, na.rm=T)))
+
+sl1 <-ggplot(MSP, aes(x=as.factor(Year), y=Sale_Prices))+
+    geom_line(color=gbp1, aes(group=1), size=1.5)+
+    geom_point(colour=gbp1, size = 3.5, alpha=0.5)+
+    labs(title="The Growth of Sale Prices by year", x=NULL, y="Sale Price")+
+    theme( plot.title=element_text(vjust=3, size=15) ) 
+
+
+
+sl1
+```
+
+```{r}
+
+MSP$rate = c(0, 100*diff(MSP$Sale_Prices)/MSP[-nrow(MSP),]$Sale_Prices)
+
+sl2 <-ggplot(MSP, aes(x=as.factor(Year), y=rate))+
+    geom_line(color= "gray50", aes(group=1), size=1)+
+    #geom_point(colour=gbp1, size = 3.5, alpha=0.5)+
+    labs(title="Change rate of Sale Price", x="Year", y="rate of change")+
+    geom_hline(yintercept = 0, color = gbp1 )+
+    theme(plot.title=element_text(size=15))+ theme_minimal()
+
+sl2
+
+
+```
+
+
+
+
+## Growth of Sale price by State from 1996-2017
+
+```{r}
+
+library(wesanderson)
+gbp1<-wes_palette("GrandBudapest2")[1]
+
+MSP <- aggregate(Sale_Prices ~ RegionName, state, mean)
+
+
+sl11 <-ggplot(MSP, aes(x=as.factor(RegionName), y=Sale_Prices))+
+    geom_line(color=gbp1, aes(group=1), size=1.5)+
+    geom_point(colour=gbp1, size = 3.5, alpha=0.5)+
+    labs(title="The Growth of Sale Prices across years by State", x=NULL, y="Sale Price")+
+    theme(axis.text.x = element_text(angle=90, hjust=1))
+
+
+sl11
+
+
+```
+```{r}
+
+library(wesanderson)
+gbp2<-wes_palette("GrandBudapest2")[4]
+
+
+
+MRP=na.omit(ddply(state,'Year',summarise,
+                  Rental_price = mean(MedianRentalPrice_AllHomes , na.rm=T)))
+
+rl1 <-ggplot(MRP, aes(x=as.factor(Year), y=Rental_price))+
+    geom_line(color=gbp2, aes(group=1), size=1.5)+
+    geom_point(colour=gbp2, size = 3.5, alpha=0.5)+
+    labs(title="The Growth of Rental Prices by year", x=NULL, y="Rental_price")+
+    theme( plot.title=element_text(vjust=3, size=20) ) 
+
+
+rl1
+
+```
+
+```{r}
+
+MRP$rate = c(0, 100*diff(MRP$Rental_price)/MRP[-nrow(MRP),]$Rental_price)
+rl2 <-ggplot(MRP, aes(x=as.factor(Year), y=rate))+
+    geom_line(color= "gray50", aes(group=1), size=1)+
+    #geom_point(colour=gbp2, size = 3.5, alpha=0.5)+
+    labs(title="Change rate of Rental Price", x="Year", y="rate of change")+
+    geom_hline(yintercept = 0, color = gbp2 )+
+    theme(plot.title=element_text(size=15)) + theme_minimal()
+
+
+
+rl2
+```
+```{r}
+
+
+library(wesanderson)
+gbp1<-wes_palette("GrandBudapest2")[4]
+
+MSP <- aggregate(MedianRentalPrice_AllHomes ~ RegionName, state, mean)
+
+
+sl12 <-ggplot(MSP, aes(x=as.factor(RegionName), y=MedianRentalPrice_AllHomes))+
+    geom_line(color=gbp1, aes(group=1), size=1.5)+
+    geom_point(colour=gbp1, size = 3.5, alpha=0.5)+
+    labs(title="The Growth of Rent Prices across years by State", x=NULL, y="Sale Price")+
+    theme(axis.text.x = element_text(angle=90, hjust=1))
+
+
+sl12
+
+
+
+```
+
+## Days on Zillow Analysis
+
+
+```{r}
+
+
+aggregate(Sale_Prices ~DaysOnZillow_AllHomes, state, mean)%>%
+  ggplot(aes(x=DaysOnZillow_AllHomes, y=Sale_Prices))+
+  geom_line(col=wes_palette("GrandBudapest2")[1])+
+  labs(title="Days on Zillow effect House Sale prices Decreases", x="Days on Zillow", y="House Sale Price")+
+    stat_smooth(method="loess", color="#0F327B", alpha=0.3)+
+  theme_minimal()
+
+
+
+
+
+```
+
+## Days on Zillow effect on rent Prices
+
+```{r}
+
+aggregate(Sale_Prices ~DaysOnZillow_AllHomes, state, mean)%>%
+  ggplot(aes(x=DaysOnZillow_AllHomes, y=Sale_Prices))+
+  geom_line(col=wes_palette("GrandBudapest2")[4])+
+  labs(title="Days on Zillow Increase effects House Rent Value Decrease", x="Days on Zillow", y="House Rental Price")+
+   stat_smooth(method="loess", color="#0F327B", alpha=0.3)+
+  theme_minimal()
+
+
+
+
+```
+
+## HOW DO THE HOME VALUES VARY BY TIER TYPE?
+
+
+## DISTRIBUTION OF TOP TIER HOMES
+
+```{r}
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates <-data.frame( region = tolower(aggregate(ZHVI_TopTier ~ RegionName, state, mean)[,1]), 
+                        Price = aggregate(ZHVI_TopTier ~RegionName,state,mean)[,2])%>%
+            mutate(Rank = dense_rank(desc(Price)))%>%
+            merge(USA, by = 'region')
+
+ap<-arrange(Allstates, order)%>%
+    ggplot(aes(long, lat, group=group, fill=Price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "ZHVI values for Top tier Homes in US")+
+    coord_map("polyconic")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("GrandBudapest2"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(ap)
+```
+
+## DISTRIBUTION OF MIDDLE TIER HOMES
+
+```{r}
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates <-data.frame( region = tolower(aggregate(ZHVI_MiddleTier   ~ RegionName, state, mean)[,1]), 
+                        Price = aggregate(ZHVI_MiddleTier   ~RegionName,state,mean)[,2])%>%
+            mutate(Rank = dense_rank(desc(Price)))%>%
+            merge(USA, by = 'region')
+
+ap<-arrange(Allstates, order)%>%
+    ggplot(aes(long, lat, group=group, fill=Price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "ZHVI values for Middle Tier Homes in US")+
+    coord_map("polyconic")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("GrandBudapest2"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(ap)
+```
+
+## DISTRIBUTION OF BOTTOM TIER HOMES
+
+```{r}
+USA<-map_data("state")
+USA$region<-gsub(" ","", USA$region)
+Allstates <-data.frame( region = tolower(aggregate(ZHVI_BottomTier ~ RegionName, state, mean)[,1]), 
+                        Price = aggregate(ZHVI_BottomTier~RegionName,state,mean)[,2])%>%
+            mutate(Rank = dense_rank(desc(Price)))%>%
+            merge(USA, by = 'region')
+
+ap<-arrange(Allstates, order)%>%
+    ggplot(aes(long, lat, group=group, fill=Price))+
+    geom_polygon()+
+    geom_path(alpha=0.2)+
+    labs(x=NULL, y=NULL, title = "ZHVI values for Bottom Tier Homes in US")+
+    coord_map("polyconic")+
+    coord_fixed(1.3)+
+    scale_fill_gradientn(colors= wes_palette("GrandBudapest2"))+
+    theme(legend.text=element_text(size=8),
+          plot.title=element_text(size=15),
+          panel.background=element_blank())
+ggplotly(ap)
+```
+
+
+
+
+
+### DISTRIBUTION OF HOUSE VALUES ACROSS TIERS
+
+
+
+
+```{r}
+
+tier = names(state)[grepl('Tier',names(state))]
+ 
+total_distribution = state %>%
+    select(ends_with('Tier')) %>% mutate(date=state$Date) %>%
+  mutate(date=ymd(date)) %>%
+  na.omit() %>%
+  gather(type,value,1:3) %>%
+  select(value)
+
+
+
+options(scipen=999)
+p = state %>%
+  select(ends_with('Tier')) %>% mutate(date=state$Date) %>%
+  mutate(date=ymd(date)) %>%
+  na.omit() %>%
+  gather(type,value,1:3) %>%
+  ggplot(aes(x=value,fill=type))+geom_density(alpha=0.5, colour = "transparent")+facet_wrap(~type,nrow = 3)+
+  theme(panel.background = element_rect(fill = '#ffffff'),
+        axis.text.x = element_text(vjust=-1,angle=90),
+        strip.background = element_blank(),
+        legend.position = 'none',plot.title = element_text(hjust=0.5),plot.caption = element_text(hjust=-0.05,face='italic'))+labs(title='How do the house values vary by Tier type?',x='In USD',caption='The distribution in gray shows the overall distribution of the home values')+geom_density(data=total_distribution,aes(x=value),fill='gray',color='transparent',alpha=0.5)
+
+p
+
+ 
+ggsave(plot=p,filename='house_do_the_house_values_vary.png',width=17,height=10)
+
+
+```
+## Correlations
+
+```{r}
+
+library(corrplot)
+
+subset1 = subset(state, select=c(DaysOnZillow_AllHomes, Sale_Prices, Sale_Counts, MedianListingPrice_AllHomes , MedianRentalPrice_AllHomes, ZHVI_1bedroom ,ZHVI_2bedroom ,ZHVI_3bedroom, ZHVI_4bedroom, ZHVI_5BedroomOrMore, ZHVI_AllHomes  ,ZHVI_BottomTier, ZHVI_MiddleTier, ZHVI_TopTier, ZHVI_CondoCoop, ZHVI_SingleFamilyResidence, ZHVIPerSqft_AllHomes, ZRI_AllHomes, Zri_SingleFamilyResidenceRental ))%>%na.omit()%>%cor()
+
+subset1
+
+corrplot1 = corrplot(subset1, hc.order = TRUE, outline.col = "white",  cl.pos = 'n', order = 'hclust', tl.cex=0.6, cl.ratio=0.2,
+                   cl.cex=0.6, tl.col="black")
+
+corrplot1
+
+
+```
+## Correlation Plot Number
+
+```{r}
+
+corrplot2 = corrplot(subset1, tl.cex=0.6, cl.ratio=0.2,
+                   cl.cex=0.6, tl.col="black", order = "AOE", number.cex=0.75, , type = 'lower', diag = FALSE)
+
+corrplot2
+
+
+```
+
+```{r}
+
+corrplot3 = corrplot(subset1, tl.cex=0.6, cl.ratio=0.2,
+                   cl.cex=0.6, tl.col="black", order = "AOE", number.cex=0.75, , type = 'upper', diag = FALSE)
+
+corrplot3
+
+
+
+
+
+```
+
+```{r}
+
+
+
+corrplot4 = corrplot(subset1, method = 'number', tl.cex=0.6, cl.ratio=0.2, cl.cex=0.6, tl.col="black", order = "AOE", number.cex=0.4, , type = 'upper', diag = FALSE)
+
+corrplot4
+
+
+
+```
+
+```{r}
+
+#tierwise = as.data.frame(state_max)
+#str(tierwise)
+#print(tierwise)
+
+
+#ggplot(tierwise, aes(x = type, y =max_value, fill = type))  + geom_bar(stat="identity", color = origin)  + 
+
+  #ggtitle("Distribution of House values by Tier Type")
+
+```
+
+
+
+
+## Distribution of Median Listing prices based on No. of Bedrooms
+
+```{r}
+
+listprice.df =  subset(state, select = c('Date', 'RegionName','MedianListingPrice_1Bedroom', 
+'MedianListingPrice_2Bedroom', 'MedianListingPrice_3Bedroom', 
+'MedianListingPrice_4Bedroom', 'MedianListingPrice_5BedroomOrMore', 'MedianListingPrice_CondoCoop'))
+
+listprice.df$Date <- as.Date(listprice.df$Date, format = "%Y-%m-%d")
+
+head(listprice.df)
+
+
+ggplot(aes(x = MedianListingPrice_1Bedroom), data=listprice.df) +
+geom_histogram(fill="LightPink", colour = "lightgreen", bins = 40) +
+labs(x='One Bedroom', y='Count')
+
+ggplot(aes(x=MedianListingPrice_2Bedroom), data=listprice.df) +
+geom_histogram(fill="LightPink", colour = "lightgreen", bins = 40) +
+labs(x='Two Bedroom', y='Count')
+
+ggplot(aes(x=MedianListingPrice_3Bedroom), data=listprice.df) +
+geom_histogram(fill="LightPink", colour = "lightgreen", bins = 40) +
+labs(x='Three Bedroom', y='Count')
+
+ggplot(aes(x=MedianListingPrice_4Bedroom), data=listprice.df) +
+geom_histogram(fill="LightPink", colour = "lightgreen", bins = 40) +
+labs(x='Four Bedroom', y='Count')
+
+ggplot(aes(x= MedianListingPrice_5BedroomOrMore), data=listprice.df) +
+geom_histogram(fill="LightPink", colour = "lightgreen", bins = 40) +
+labs(x='Five Bedroom or More', y='Count')
+
+ggplot(aes(x= MedianListingPrice_CondoCoop), data=listprice.df) +
+geom_histogram(fill="LightPink", colour = "lightgreen",bins = 40) +
+labs(x='Studio', y='Count')
+
+
+```
+## Median Rental Price per Sq feet 
+
+```{r}
+
+rental.df <- subset(state, select = c('Date', 'RegionName','MedianRentalPricePerSqft_1Bedroom', 
+'MedianRentalPricePerSqft_2Bedroom', 'MedianRentalPricePerSqft_3Bedroom', 
+'MedianRentalPricePerSqft_4Bedroom', 'MedianRentalPricePerSqft_5BedroomOrMore', 'MedianRentalPricePerSqft_Studio'))
+
+
+## Distribution of Median Rental Price per sq feet based on No. of Bedrooms
+
+
+ggplot(aes(x=MedianRentalPricePerSqft_1Bedroom), data=rental.df) +
+geom_histogram(fill= "LightBlue", colour= "lightgreen", bins = 30) +
+labs(x='One Bedroom', y='Count')
+
+ggplot(aes(x=MedianRentalPricePerSqft_2Bedroom), data=rental.df) +
+geom_histogram(fill="LightBlue", colour = "lightgreen",bins = 30) +
+labs(x='Two Bedroom', y='Count')
+
+ggplot(aes(x=MedianRentalPricePerSqft_3Bedroom), data=rental.df) +
+geom_histogram(fill="LightBlue", colour = "lightgreen",bins = 30) +
+labs(x='Three Bedroom', y='Count')
+
+
+ggplot(aes(x=MedianRentalPricePerSqft_4Bedroom), data=rental.df) +
+geom_histogram(fill="LightBlue", colour = "lightgreen",bins = 30) +
+labs(x='Four Bedroom', y='Count')
+
+
+ggplot(aes(x=MedianRentalPricePerSqft_5BedroomOrMore), data=rental.df) +
+geom_histogram(fill="LightBlue", colour = "lightgreen",bins = 30) +
+labs(x='Five Bedroom or More', y='Count')
+
+
+ggplot(aes(x=MedianRentalPricePerSqft_Studio), data=rental.df) +
+geom_histogram(fill="LightBlue", colour = "lightgreen",bins = 30) +
+labs(x='Studio', y='Count')
+
+
+```
+
+```{r}
+
+
+
+
+
+```
+
